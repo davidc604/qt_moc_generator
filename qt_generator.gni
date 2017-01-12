@@ -1,0 +1,109 @@
+#
+# qt_generator.gni
+# GN include file
+#
+# Copyright (c) David Chen, 2017
+#
+# Example usage in GN:
+#
+# qt_moc_generator("moc_library") {
+#     sources = [
+#         "src/qt_header1.h",
+#         "src/qt_header2.h",
+#     ]
+#     include_dirs = [
+#         "/usr/include/qt5",
+#     ]
+#     moc_out_dir = "qt/moc"
+# }
+#
+
+
+template("qt_moc_generator") {
+  assert(defined(invoker.sources), "Need sources for gt_moc_generator")
+  moc_sources = invoker.sources
+
+  moc_in_dir = get_path_info(moc_sources[0], "dir")
+
+  # Sanity check
+  foreach(moc_source, moc_sources) {
+    assert("nested directories not allowed.")
+  }
+  moc_in_dir = rebase_path(moc_in_dir, ".")
+
+  if (defined(invoker.moc_out_dir)) {
+    moc_out_dir = invoker.moc_out_dir
+  } else {
+    # Absolute path to the directory of current BUILD.gn file excluding "//".
+    moc_out_dir = rebase_path(".", "//")
+    if (moc_in_dir != ".") {
+      moc_out_dir += "/$moc_in_dir"
+    }
+  }
+
+  # we generate "{name}.moc.cc" from the header files
+  cc_out_dir = "$root_gen_dir/" + moc_out_dir
+  rel_cc_out_dir = rebase_path(cc_out_dir, root_build_dir)
+
+  headers = rebase_path(invoker.sources, moc_in_dir)
+  mocgens = []
+
+  # List output files.
+  foreach(header, headers) {
+    header_dir = get_path_info(header, "dir")
+    header_name = get_path_info(header, "name")
+    header_path = header_dir + "/" + header_name
+
+    mocgens += [
+      "$cc_out_dir/$header_path.moc.cc",
+    ]
+  }
+
+  action_name = "${target_name}_gen"
+  source_set_name = target_name
+
+  # Generate moc cc sources.
+  action(action_name) {
+    visibility = [ ":$source_set_name" ]
+    # FIXME:
+    # change the script location according to your build system.
+    script = "./qt_moc_generator.py"
+    sources = moc_sources
+    outputs = get_path_info(mocgens, "abspath")
+    args = headers
+
+    args += [
+      "--header-in-dir",
+      rebase_path(moc_in_dir, root_build_dir),
+      "--cc-out-dir",
+      rel_cc_out_dir,
+    ]
+  }
+
+  # Build generated moc sources as source_set.
+  target("source_set", target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "defines",
+                             "testonly",
+                             "visibility",
+                             "include_dirs",
+                           ])
+
+    sources = get_target_outputs(":$action_name")
+
+    if (defined(invoker.extra_configs)) {
+      configs += invoker.extra_configs
+    }
+
+    deps = [
+      ":$action_name",
+    ]
+
+    # This will link any libraries in the deps (the use of invoker.deps in the
+    # action won't link it).
+    if (defined(invoker.deps)) {
+      deps += invoker.deps
+    }
+  }
+}
