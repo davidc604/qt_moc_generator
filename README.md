@@ -20,6 +20,8 @@ Create a built source_set, for example:
 
 ```python
 qt_moc_generator("qt_sources") {
+    qt_moc_generator_path = rebase_path("qt/qt_moc_generator.py", ".")
+    
     sources = [
         "src/qt_header1.h",
         "src/qt_header2.h",
