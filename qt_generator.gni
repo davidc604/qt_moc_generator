@@ -7,6 +7,9 @@
 # Example usage in GN:
 #
 # qt_moc_generator("moc_library") {
+#     
+#     qt_moc_generator_path = rebase_path("qt/qt_moc_generator.py", ".")
+#
 #     sources = [
 #         "src/qt_header1.h",
 #         "src/qt_header2.h",
@@ -20,15 +23,30 @@
 
 
 template("qt_moc_generator") {
+  assert(defined(invoker.qt_moc_generator_path), "Need correct path to qt_moc_generator.py")
   assert(defined(invoker.sources), "Need sources for gt_moc_generator")
   moc_sources = invoker.sources
-
   moc_in_dir = get_path_info(moc_sources[0], "dir")
 
-  # Sanity check
-  foreach(moc_source, moc_sources) {
-    assert("nested directories not allowed.")
+  if (defined(invoker.moc_in_dir)) {
+    moc_in_dir = invoker.moc_in_dir
+    foreach(moc_source, moc_sources) {
+      if (get_path_info(proto_source, "dir") != moc_in_dir) {
+        has_nested_dirs = true
+      }
+    }
+  } else {
+    moc_in_dir = get_path_info(moc_sources[0], "dir")
+
+    # Sanity check, |moc_in_dir| should be defined to allow sub-directories.
+    foreach(moc_source, moc_sources) {
+      assert(get_path_info(moc_source, "dir") == moc_in_dir,
+             "Please define |moc_sources| to allow nested directories.")
+    }
   }
+
+  # Avoid absolute path because of the assumption that |moc_in_dir| is
+  # relative to the directory of current BUILD.gn file.
   moc_in_dir = rebase_path(moc_in_dir, ".")
 
   if (defined(invoker.moc_out_dir)) {
@@ -40,6 +58,7 @@ template("qt_moc_generator") {
       moc_out_dir += "/$moc_in_dir"
     }
   }
+
 
   # we generate "{name}.moc.cc" from the header files
   cc_out_dir = "$root_gen_dir/" + moc_out_dir
@@ -65,9 +84,7 @@ template("qt_moc_generator") {
   # Generate moc cc sources.
   action(action_name) {
     visibility = [ ":$source_set_name" ]
-    # FIXME:
-    # change the script location according to your build system.
-    script = "./qt_moc_generator.py"
+    script = invoker.qt_moc_generator_path  
     sources = moc_sources
     outputs = get_path_info(mocgens, "abspath")
     args = headers
@@ -107,3 +124,4 @@ template("qt_moc_generator") {
     }
   }
 }
+
